@@ -137,12 +137,17 @@ export const submitEnquiry: RequestHandler = async (req, res) => {
       (property as any).sellerId;
 
     if (resolvedOwner) {
-      const sellerIdStr = typeof resolvedOwner === "object" ? String(resolvedOwner) : String(resolvedOwner);
+      const sellerIdStr =
+        typeof resolvedOwner === "object"
+          ? String(resolvedOwner)
+          : String(resolvedOwner);
 
       // Create a seller-facing message record so it appears in Seller Dashboard
       try {
         await db.collection("property_inquiries").insertOne({
-          sellerId: ObjectId.isValid(sellerIdStr) ? new ObjectId(sellerIdStr) : sellerIdStr,
+          sellerId: ObjectId.isValid(sellerIdStr)
+            ? new ObjectId(sellerIdStr)
+            : sellerIdStr,
           propertyId: new ObjectId(propertyId),
           enquiryId: result.insertedId,
           name: name.trim(),
@@ -156,7 +161,9 @@ export const submitEnquiry: RequestHandler = async (req, res) => {
 
         // Optional: notify seller
         await db.collection("notifications").insertOne({
-          sellerId: ObjectId.isValid(sellerIdStr) ? new ObjectId(sellerIdStr) : sellerIdStr,
+          sellerId: ObjectId.isValid(sellerIdStr)
+            ? new ObjectId(sellerIdStr)
+            : sellerIdStr,
           title: "New Property Enquiry",
           message: `${name.trim()} enquired about ${property.title}`,
           type: "direct_message",
@@ -164,7 +171,10 @@ export const submitEnquiry: RequestHandler = async (req, res) => {
           createdAt: new Date(),
         });
       } catch (e) {
-        console.warn("⚠️ Failed to create seller inquiry record:", (e as any)?.message || e);
+        console.warn(
+          "⚠️ Failed to create seller inquiry record:",
+          (e as any)?.message || e,
+        );
       }
     }
 

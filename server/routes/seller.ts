@@ -448,7 +448,8 @@ export const getSellerMessages: RequestHandler = async (req, res) => {
               )
           : null;
 
-        const buyerName = buyer?.name || message.name || message.buyerName || "Unknown Buyer";
+        const buyerName =
+          buyer?.name || message.name || message.buyerName || "Unknown Buyer";
         const buyerEmail = buyer?.email || message.email || "";
         const buyerPhone = buyer?.phone || message.phone || "";
 
@@ -485,14 +486,25 @@ export const replyToSellerMessage: RequestHandler = async (req, res) => {
   try {
     const db = getDatabase();
     const sellerId = (req as any).userId;
-    const { inquiryId, reply } = req.body as { inquiryId: string; reply: string };
+    const { inquiryId, reply } = req.body as {
+      inquiryId: string;
+      reply: string;
+    };
 
     if (!inquiryId || !ObjectId.isValid(inquiryId) || !reply || !reply.trim()) {
-      return res.status(400).json({ success: false, error: "inquiryId and reply are required" });
+      return res
+        .status(400)
+        .json({ success: false, error: "inquiryId and reply are required" });
     }
 
     const result = await db.collection("property_inquiries").updateOne(
-      { _id: new ObjectId(inquiryId), $or: [{ sellerId: new ObjectId(String(sellerId)) }, { sellerId: String(sellerId) }] },
+      {
+        _id: new ObjectId(inquiryId),
+        $or: [
+          { sellerId: new ObjectId(String(sellerId)) },
+          { sellerId: String(sellerId) },
+        ],
+      },
       {
         $push: {
           replies: {
@@ -508,13 +520,17 @@ export const replyToSellerMessage: RequestHandler = async (req, res) => {
     );
 
     if (result.matchedCount === 0) {
-      return res.status(404).json({ success: false, error: "Inquiry not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Inquiry not found" });
     }
 
     return res.json({ success: true, message: "Reply added" });
   } catch (error) {
     console.error("replyToSellerMessage error:", error);
-    return res.status(500).json({ success: false, error: "Failed to add reply" });
+    return res
+      .status(500)
+      .json({ success: false, error: "Failed to add reply" });
   }
 };
 
@@ -947,12 +963,10 @@ export const deleteSellerProperty: RequestHandler = async (req, res) => {
     });
 
     if (result.deletedCount === 0) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          error: "Property not found or not owned by user",
-        });
+      return res.status(404).json({
+        success: false,
+        error: "Property not found or not owned by user",
+      });
     }
 
     res.json({ success: true, message: "Property deleted" });
@@ -1002,12 +1016,10 @@ export const resubmitSellerProperty: RequestHandler = async (req, res) => {
     );
 
     if (!result.matchedCount) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          error: "Property not found or not owned by user",
-        });
+      return res.status(404).json({
+        success: false,
+        error: "Property not found or not owned by user",
+      });
     }
 
     res.json({ success: true, message: "Property resubmitted for review" });
