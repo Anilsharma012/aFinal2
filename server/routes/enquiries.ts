@@ -126,6 +126,58 @@ export const submitEnquiry: RequestHandler = async (req, res) => {
       },
     });
 
+    // Resolve seller/owner for this property (supporting multiple possible fields)
+    const resolvedOwner =
+      (property as any).owner ||
+      (property as any).seller ||
+      (property as any).postedBy ||
+      (property as any).user ||
+      (property as any).createdBy ||
+      (property as any).ownerId ||
+      (property as any).sellerId;
+
+    if (resolvedOwner) {
+      const sellerIdStr =
+        typeof resolvedOwner === "object"
+          ? String(resolvedOwner)
+          : String(resolvedOwner);
+
+      // Create a seller-facing message record so it appears in Seller Dashboard
+      try {
+        await db.collection("property_inquiries").insertOne({
+          sellerId: ObjectId.isValid(sellerIdStr)
+            ? new ObjectId(sellerIdStr)
+            : sellerIdStr,
+          propertyId: new ObjectId(propertyId),
+          enquiryId: result.insertedId,
+          name: name.trim(),
+          phone: phone.trim(),
+          message: message.trim(),
+          source: "enquiry",
+          isRead: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        // Optional: notify seller
+        await db.collection("notifications").insertOne({
+          sellerId: ObjectId.isValid(sellerIdStr)
+            ? new ObjectId(sellerIdStr)
+            : sellerIdStr,
+          title: "New Property Enquiry",
+          message: `${name.trim()} enquired about ${property.title}`,
+          type: "direct_message",
+          isRead: false,
+          createdAt: new Date(),
+        });
+      } catch (e) {
+        console.warn(
+          "⚠️ Failed to create seller inquiry record:",
+          (e as any)?.message || e,
+        );
+      }
+    }
+
     console.log(
       `✅ New enquiry received for property ${propertyId} from ${name} (${phone})`,
     );
