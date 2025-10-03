@@ -94,7 +94,7 @@ export default function OLXStyleHeader() {
 
   return (
     <header className="bg-[#C70000] border-b border-red-800 sticky top-0 z-40">
-      <div className="px-4 py-3">
+      <div className="px-4 py-2 md:py-3">
         <div className="flex items-center justify-between">
           {/* Menu Button */}
           <button
@@ -127,7 +127,7 @@ export default function OLXStyleHeader() {
         </div>
 
         {/* Search Bar */}
-        <div className="mt-3 relative">
+        <div className="mt-1 sm:mt-2 md:mt-3 relative">
           <form
             onSubmit={handleSearch}
             className="relative"
@@ -161,7 +161,7 @@ export default function OLXStyleHeader() {
                 }}
                 onFocus={() => setShowSuggestions(true)}
                 onBlur={() => setTimeout(() => setShowSuggestions(false), 120)}
-                className="w-full pl-10 pr-12 py-3 border-2 border-white border-opacity-30 rounded-lg focus:border-white focus:outline-none text-white placeholder-white placeholder-opacity-70 bg-white bg-opacity-20 backdrop-blur-sm"
+                className="w-full pl-10 pr-12 py-2 md:py-3 border-2 border-white border-opacity-30 rounded-lg focus:border-white focus:outline-none text-white placeholder-white placeholder-opacity-70 bg-white bg-opacity-20 backdrop-blur-sm"
               />
               <button
                 type="button"
