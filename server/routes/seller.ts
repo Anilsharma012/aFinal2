@@ -531,6 +531,49 @@ export const getSellerMessages: RequestHandler = async (req, res) => {
   }
 };
 
+// POST /api/seller/messages - Seller sends a direct reply to buyer (for enquiries or chat)
+export const sendSellerMessage: RequestHandler = async (req, res) => {
+  try {
+    const db = getDatabase();
+    const sellerId = (req as any).userId;
+    const { enquiryId, buyerId, buyerPhone, propertyId, message } = req.body || {};
+
+    if (!message || typeof message !== "string" || !message.trim()) {
+      return res.status(400).json({ success: false, error: "Message is required" });
+    }
+
+    const newMsg: any = {
+      senderId: sellerId,
+      senderType: "seller",
+      message: message.trim(),
+      createdAt: new Date(),
+      isRead: false,
+      source: "seller_reply",
+    };
+
+    if (buyerId) newMsg.receiverId = buyerId;
+    if (buyerPhone) newMsg.receiverPhone = String(buyerPhone);
+    if (propertyId) newMsg.propertyId = propertyId;
+    if (enquiryId) newMsg.enquiryId = enquiryId;
+
+    const result = await db.collection("messages").insertOne(newMsg);
+
+    // If it's an enquiry, mark as contacted
+    if (enquiryId) {
+      try {
+        await db.collection("enquiries").updateOne({ _id: new ObjectId(enquiryId) }, { $set: { status: "contacted", updatedAt: new Date() } });
+      } catch (e) {
+        // continue
+      }
+    }
+
+    res.status(201).json({ success: true, data: { messageId: result.insertedId } });
+  } catch (error) {
+    console.error("Error sending seller message:", error);
+    res.status(500).json({ success: false, error: "Failed to send message" });
+  }
+};
+
 // Get available packages for sellers
 export const getSellerPackages: RequestHandler = async (req, res) => {
   try {
