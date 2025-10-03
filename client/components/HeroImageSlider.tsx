@@ -141,7 +141,7 @@ const HeroImageSlider: React.FC = () => {
 
   return (
   
-    <div className="relative w-full h-[55vh] min-h-[280px] sm:h-[400px] md:h-[450px] lg:h-[500px] overflow-hidden bg-gray-900">
+    <div className="relative w-full h-[60vh] min-h-[340px] sm:h-[460px] md:h-[520px] lg:h-[560px] overflow-hidden bg-gray-900">
       <Carousel
         opts={{ align: "start", loop: true }}
         setApi={setApi}
