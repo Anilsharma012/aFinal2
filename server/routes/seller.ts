@@ -605,6 +605,43 @@ export const sendSellerMessage: RequestHandler = async (req, res) => {
       }
     }
 
+    // Emit real-time notification to buyer if possible
+    try {
+      const socketServer = getSocketServer();
+      if (socketServer) {
+        const payload = {
+          _id: result.insertedId,
+          message: newMsg.message,
+          senderId: newMsg.senderId,
+          senderType: newMsg.senderType,
+          propertyId: newMsg.propertyId,
+          enquiryId: newMsg.enquiryId,
+          createdAt: newMsg.createdAt,
+          source: newMsg.source || 'seller_reply'
+        };
+
+        // Find conversation if exists
+        let conversation: any = null;
+        if (newMsg.propertyId && newMsg.receiverId) {
+          conversation = await db.collection('conversations').findOne({ property: new ObjectId(String(newMsg.propertyId)), buyer: newMsg.receiverId, seller: String(newMsg.senderId) });
+        }
+
+        if (conversation) {
+          // Use emitNewMessage to notify conversation participants
+          const messageWithId = { ...payload, _id: result.insertedId, text: payload.message, sender: payload.senderId };
+          socketServer.emitNewMessage(conversation, messageWithId);
+        } else if (newMsg.receiverId) {
+          // Emit generic notification to the buyer's personal room
+          socketServer.emitToUser(String(newMsg.receiverId), 'notification:new', payload);
+        } else if (newMsg.receiverPhone) {
+          // If only phone available, emit to a room for that phone if any
+          socketServer.emitToUser(String(newMsg.receiverPhone), 'notification:new', payload);
+        }
+      }
+    } catch (e) {
+      console.error('Error emitting seller reply socket event', e);
+    }
+
     res.status(201).json({ success: true, data: { messageId: result.insertedId } });
   } catch (error) {
     console.error("Error sending seller message:", error);
