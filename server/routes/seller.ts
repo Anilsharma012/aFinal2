@@ -511,8 +511,46 @@ export const getSellerMessages: RequestHandler = async (req, res) => {
       };
     });
 
-    // 3) Merge and sort by time desc
-    const combined = [...chatEnhanced, ...enquiryMapped].sort(
+    // 3) Direct messages from messages collection (seller replies / admin messages)
+    const directMsgsRaw = await db
+      .collection("messages")
+      .find({
+        $or: [
+          { senderId: sellerId },
+          { receiverId: sellerId },
+          { targetUserId: sellerId },
+        ],
+      })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    const directMapped = await Promise.all(
+      directMsgsRaw.map(async (dm: any) => {
+        // try to resolve buyer name if possible
+        let buyerName = "Buyer";
+        if (dm.receiverId) {
+          const u = await db.collection("users").findOne({ _id: dm.receiverId }, { projection: { name: 1 } });
+          buyerName = u?.name || buyerName;
+        } else if (dm.receiverPhone) buyerName = dm.receiverPhone;
+
+        return {
+          _id: dm._id,
+          buyerName,
+          buyerEmail: dm.receiverEmail || "",
+          buyerPhone: dm.receiverPhone || "",
+          message: dm.message || dm.content || "",
+          propertyId: dm.propertyId || dm.enquiryPropertyId || null,
+          propertyTitle: dm.propertyTitle || "",
+          propertyPrice: dm.propertyPrice || 0,
+          timestamp: dm.createdAt,
+          isRead: !!dm.isRead,
+          source: dm.source || "direct",
+        };
+      }),
+    );
+
+    // 4) Merge and sort by time desc
+    const combined = [...chatEnhanced, ...enquiryMapped, ...directMapped].sort(
       (a, b) => new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime(),
     );
 
