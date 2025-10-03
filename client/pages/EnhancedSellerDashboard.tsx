@@ -122,6 +122,7 @@ export default function EnhancedSellerDashboard() {
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [replyText, setReplyText] = useState("");
   const openReplyModal = (m: Message) => {
+    console.log('openReplyModal called for', m?._id);
     setReplyTarget(m);
     setReplyText(`Hi ${m.buyerName}, regarding ${m.propertyTitle}.`);
     setReplyModalOpen(true);
