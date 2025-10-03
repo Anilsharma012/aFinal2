@@ -107,6 +107,16 @@ export class ChatSocketServer {
     this.io.to('admin').emit(event, data);
   }
 
+  // Emit to a single user by userId
+  public emitToUser(userId: string, event: string, data: any) {
+    try {
+      this.io.to(`user:${userId}`).emit(event, data);
+      console.log(`🔔 Emitted event ${event} to user:${userId}`);
+    } catch (e) {
+      console.error('Error emitting to user room', e);
+    }
+  }
+
   // Get connection stats
   public getStats() {
     return {
