@@ -11,6 +11,7 @@ import {
   Tabs, TabsContent, TabsList, TabsTrigger,
 } from "../components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
+import { toast } from "sonner";
 import { Switch } from "../components/ui/switch";
 import { Label } from "../components/ui/label";
 import {
@@ -41,11 +42,13 @@ interface Message {
   _id: string;
   buyerName: string;
   buyerEmail: string;
+  buyerPhone?: string;
   message: string;
   propertyId: string;
   propertyTitle: string;
   timestamp: string;
   isRead: boolean;
+  source?: "chat" | "enquiry" | string;
 }
 
 interface PackageT {
@@ -114,6 +117,48 @@ export default function EnhancedSellerDashboard() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [packages, setPackages] = useState<PackageT[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+
+  // Reply modal state
+  const [replyModalOpen, setReplyModalOpen] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<Message | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const openReplyModal = (m: Message) => {
+    console.log('openReplyModal called for', m?._id);
+    setReplyTarget(m);
+    setReplyText(`Hi ${m.buyerName}, regarding ${m.propertyTitle}.`);
+    setReplyModalOpen(true);
+  };
+  const closeReplyModal = () => {
+    setReplyModalOpen(false);
+    setReplyTarget(null);
+    setReplyText("");
+  };
+
+  const sendReply = async () => {
+    try {
+      const token = await getAuthToken();
+      if (!token || !replyTarget) {
+        toast.error('Session expired or invalid target. Please login again.');
+        return;
+      }
+      const body: any = { message: replyText };
+      if (replyTarget.source === 'enquiry') body.enquiryId = replyTarget._id;
+      if (replyTarget.buyerPhone) body.buyerPhone = replyTarget.buyerPhone;
+      if (replyTarget.propertyId) body.propertyId = replyTarget.propertyId;
+
+      const res = await api.post('/seller/messages', body, token);
+      if (res?.data?.success) {
+        toast.success('Reply sent successfully');
+        closeReplyModal();
+        await fetchDashboardData();
+      } else {
+        toast.error('Failed to send reply');
+      }
+    } catch (e) {
+      console.error('sendReply:', e);
+      alert('Failed to send reply');
+    }
+  };
 
   // Filters for properties
   const [propSearch, setPropSearch] = useState("");
@@ -806,7 +851,8 @@ export default function EnhancedSellerDashboard() {
                           <div className="flex-1">
                             <div className="flex items-center space-x-2 mb-2">
                               <h4 className="font-medium text-gray-900">{m.buyerName}</h4>
-                              <Badge variant="outline" className="text-xs">{m.buyerEmail}</Badge>
+                              {m.buyerEmail && <Badge variant="outline" className="text-xs">{m.buyerEmail}</Badge>}
+                              {m.buyerPhone && <Badge variant="outline" className="text-xs">{m.buyerPhone}</Badge>}
                             </div>
                             <p className="text-sm text-gray-600 mb-2">{m.message}</p>
                             <div className="flex items-center space-x-4 text-xs text-gray-400">
@@ -814,7 +860,23 @@ export default function EnhancedSellerDashboard() {
                               <span>{new Date(m.timestamp).toLocaleString()}</span>
                             </div>
                           </div>
-                          <Button size="sm" variant="outline">Reply</Button>
+                          <div className="flex items-center space-x-2">
+                            {m.buyerPhone && (
+                              <>
+                                <a href={`tel:${m.buyerPhone}`} className="inline-flex"><Button size="sm" variant="outline">Call</Button></a>
+                                <a
+                                  href={`https://wa.me/${(m.buyerPhone || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${m.buyerName}, regarding ${m.propertyTitle}`)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex"
+                                >
+                                  <Button size="sm" variant="outline">WhatsApp</Button>
+                                </a>
+                              </>
+                            )}
+
+                            <Button size="sm" variant="outline" onClick={() => openReplyModal(m)} onMouseDown={() => openReplyModal(m)}>Reply</Button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1035,6 +1097,28 @@ export default function EnhancedSellerDashboard() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Reply Modal */}
+      <Dialog open={replyModalOpen} onOpenChange={(o) => { if(!o) closeReplyModal(); else setReplyModalOpen(Boolean(o)); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Reply to {replyTarget?.buyerName}</DialogTitle>
+          </DialogHeader>
+          <div className="p-2">
+            <p className="text-sm text-gray-500 mb-2">Property: {replyTarget?.propertyTitle}</p>
+            <textarea
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              rows={6}
+              className="w-full border border-gray-300 rounded p-2"
+            />
+            <div className="flex justify-end mt-3 space-x-2">
+              <Button variant="outline" onClick={closeReplyModal}>Cancel</Button>
+              <Button onClick={sendReply} className="bg-[#C70000] text-white">Send Reply</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <BottomNavigation />
     </div>

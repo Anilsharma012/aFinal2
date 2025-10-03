@@ -386,6 +386,21 @@ export const api = {
     try {
       const response = await apiRequest(endpoint, { method: "GET", headers });
       if (!response.ok) {
+        // If authorization error, clear stored tokens and redirect to login
+        if (response.status === 401 || response.status === 403) {
+          try {
+            localStorage.removeItem("token");
+            localStorage.removeItem("adminToken");
+            localStorage.removeItem("user");
+          } catch {}
+          console.warn("api.get: authorization failed, redirecting to /auth");
+          if (typeof window !== "undefined") {
+            // small delay to allow UI logs
+            setTimeout(() => (window.location.href = "/auth"), 300);
+          }
+          return { data: null };
+        }
+
         throw new Error(
           response.data?.error ||
             response.data?.message ||

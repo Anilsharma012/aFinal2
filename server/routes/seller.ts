@@ -413,15 +413,16 @@ export const deleteSellerNotification: RequestHandler = async (req, res) => {
   }
 };
 
-// Get seller messages from buyers
+// Get seller messages from buyers (includes chat inquiries and form enquiries)
 export const getSellerMessages: RequestHandler = async (req, res) => {
   try {
     const db = getDatabase();
     const sellerId = (req as any).userId;
 
-    // Get messages where seller is the recipient
     const sellerObjId = new ObjectId(String(sellerId));
-    const messages = await db
+
+    // 1) Messages from chat-based inquiries (property_inquiries)
+    const chatMsgs = await db
       .collection("property_inquiries")
       .find({
         $or: [{ sellerId: sellerObjId }, { sellerId: String(sellerId) }],
@@ -429,41 +430,133 @@ export const getSellerMessages: RequestHandler = async (req, res) => {
       .sort({ createdAt: -1 })
       .toArray();
 
-    // Enhance messages with buyer and property details
-    const enhancedMessages = await Promise.all(
-      messages.map(async (message) => {
-        // Get buyer details
-        const buyer = await db
-          .collection("users")
-          .findOne(
-            { _id: message.buyerId },
-            { projection: { name: 1, email: 1, phone: 1 } },
-          );
+    const chatEnhanced = await Promise.all(
+      chatMsgs.map(async (message) => {
+        const buyer = message.buyerId
+          ? await db
+              .collection("users")
+              .findOne(
+                { _id: message.buyerId },
+                { projection: { name: 1, email: 1, phone: 1 } },
+              )
+          : null;
 
-        // Get property details
-        const property = await db
-          .collection("properties")
-          .findOne(
-            { _id: message.propertyId },
-            { projection: { title: 1, price: 1 } },
-          );
+        const property = message.propertyId
+          ? await db
+              .collection("properties")
+              .findOne(
+                { _id: message.propertyId },
+                { projection: { title: 1, price: 1 } },
+              )
+          : null;
 
         return {
-          ...message,
+          _id: message._id,
           buyerName: buyer?.name || "Unknown Buyer",
           buyerEmail: buyer?.email || "",
           buyerPhone: buyer?.phone || "",
+          message: message.message,
+          propertyId: message.propertyId,
           propertyTitle: property?.title || "Unknown Property",
           propertyPrice: property?.price || 0,
           timestamp: message.createdAt,
-          isRead: message.isRead || false,
+          isRead: !!message.isRead,
+          source: "chat",
         };
       }),
     );
 
+    // 2) Form-based enquiries from /api/enquiries (map to seller's properties)
+    const sellerProps = await db
+      .collection("properties")
+      .find({
+        $or: [
+          { ownerId: String(sellerId) },
+          { ownerId: sellerObjId },
+          { sellerId: String(sellerId) },
+          { sellerId: sellerObjId },
+          { userId: String(sellerId) },
+          { userId: sellerObjId },
+        ],
+      }, { projection: { _id: 1, title: 1, price: 1 } })
+      .toArray();
+
+    const propMap = new Map<string, { title: string; price: number }>();
+    const propIdStrings = sellerProps.map((p: any) => {
+      const idStr = (p._id instanceof ObjectId ? p._id.toString() : String(p._id));
+      propMap.set(idStr, { title: p.title || "", price: p.price || 0 });
+      return idStr;
+    });
+
+    const enquiries = await db
+      .collection("enquiries")
+      .find({ propertyId: { $in: propIdStrings } })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    const enquiryMapped = enquiries.map((e: any) => {
+      const prop = propMap.get(String(e.propertyId)) || { title: "", price: 0 };
+      return {
+        _id: e._id,
+        buyerName: e.name,
+        buyerEmail: "",
+        buyerPhone: e.phone,
+        message: e.message,
+        propertyId: e.propertyId ? new ObjectId(e.propertyId) : undefined,
+        propertyTitle: prop.title || "",
+        propertyPrice: prop.price || 0,
+        timestamp: e.createdAt || new Date(e.timestamp),
+        isRead: e.status !== "new",
+        source: "enquiry",
+      };
+    });
+
+    // 3) Direct messages from messages collection (seller replies / admin messages)
+    const directMsgsRaw = await db
+      .collection("messages")
+      .find({
+        $or: [
+          { senderId: sellerId },
+          { receiverId: sellerId },
+          { targetUserId: sellerId },
+        ],
+      })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    const directMapped = await Promise.all(
+      directMsgsRaw.map(async (dm: any) => {
+        // try to resolve buyer name if possible
+        let buyerName = "Buyer";
+        if (dm.receiverId) {
+          const u = await db.collection("users").findOne({ _id: dm.receiverId }, { projection: { name: 1 } });
+          buyerName = u?.name || buyerName;
+        } else if (dm.receiverPhone) buyerName = dm.receiverPhone;
+
+        return {
+          _id: dm._id,
+          buyerName,
+          buyerEmail: dm.receiverEmail || "",
+          buyerPhone: dm.receiverPhone || "",
+          message: dm.message || dm.content || "",
+          propertyId: dm.propertyId || dm.enquiryPropertyId || null,
+          propertyTitle: dm.propertyTitle || "",
+          propertyPrice: dm.propertyPrice || 0,
+          timestamp: dm.createdAt,
+          isRead: !!dm.isRead,
+          source: dm.source || "direct",
+        };
+      }),
+    );
+
+    // 4) Merge and sort by time desc
+    const combined = [...chatEnhanced, ...enquiryMapped, ...directMapped].sort(
+      (a, b) => new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime(),
+    );
+
     const response: ApiResponse<any[]> = {
       success: true,
-      data: enhancedMessages,
+      data: combined,
     };
 
     res.json(response);
@@ -473,6 +566,115 @@ export const getSellerMessages: RequestHandler = async (req, res) => {
       success: false,
       error: "Failed to fetch messages",
     });
+  }
+};
+
+// POST /api/seller/messages - Seller sends a direct reply to buyer (for enquiries or chat)
+export const sendSellerMessage: RequestHandler = async (req, res) => {
+  try {
+    const db = getDatabase();
+    const sellerId = (req as any).userId;
+    const { enquiryId, buyerId, buyerPhone, propertyId, message } = req.body || {};
+
+    if (!message || typeof message !== "string" || !message.trim()) {
+      return res.status(400).json({ success: false, error: "Message is required" });
+    }
+
+    const newMsg: any = {
+      senderId: sellerId,
+      senderType: "seller",
+      message: message.trim(),
+      createdAt: new Date(),
+      isRead: false,
+      source: "seller_reply",
+    };
+
+    if (buyerId) newMsg.receiverId = buyerId;
+    if (buyerPhone) newMsg.receiverPhone = String(buyerPhone);
+    if (propertyId) newMsg.propertyId = propertyId;
+    if (enquiryId) newMsg.enquiryId = enquiryId;
+
+    // If we have propertyId and receiverId, try to find or create a conversation so buyer UI (conversations) shows the message
+    let conversation: any = null;
+    if (newMsg.propertyId && newMsg.receiverId) {
+      try {
+        conversation = await db.collection('conversations').findOne({ property: new ObjectId(String(newMsg.propertyId)), buyer: newMsg.receiverId, seller: String(newMsg.senderId) });
+        if (!conversation) {
+          const convDoc: any = {
+            property: new ObjectId(String(newMsg.propertyId)),
+            buyer: newMsg.receiverId,
+            seller: String(newMsg.senderId),
+            participants: [newMsg.receiverId, String(newMsg.senderId)],
+            createdAt: new Date(),
+            lastMessageAt: new Date(),
+            updatedAt: new Date(),
+          };
+          const convRes = await db.collection('conversations').insertOne(convDoc);
+          conversation = { _id: convRes.insertedId, ...convDoc };
+        }
+      } catch (e) {
+        console.warn('Could not create/find conversation for reply', e);
+      }
+    }
+
+    // Attach conversationId to message if available
+    if (conversation && conversation._id) {
+      newMsg.conversationId = conversation._id.toString();
+    }
+
+    const result = await db.collection("messages").insertOne(newMsg);
+
+    // Update conversation lastMessageAt
+    if (conversation && conversation._id) {
+      try {
+        await db.collection('conversations').updateOne({ _id: new ObjectId(conversation._id) }, { $set: { lastMessageAt: new Date(), updatedAt: new Date() } });
+      } catch (e) {
+        // continue
+      }
+    }
+
+    // If it's an enquiry, mark as contacted
+    if (enquiryId) {
+      try {
+        await db.collection("enquiries").updateOne({ _id: new ObjectId(enquiryId) }, { $set: { status: "contacted", updatedAt: new Date() } });
+      } catch (e) {
+        // continue
+      }
+    }
+
+    // Emit real-time notification to buyer if possible
+    try {
+      const socketServer = getSocketServer();
+      if (socketServer) {
+        const payload = {
+          _id: result.insertedId,
+          message: newMsg.message,
+          senderId: newMsg.senderId,
+          senderType: newMsg.senderType,
+          propertyId: newMsg.propertyId,
+          enquiryId: newMsg.enquiryId,
+          createdAt: newMsg.createdAt,
+          conversationId: newMsg.conversationId,
+          source: newMsg.source || 'seller_reply'
+        };
+
+        if (conversation) {
+          const messageWithId = { ...payload, _id: result.insertedId, text: payload.message, sender: payload.senderId };
+          socketServer.emitNewMessage(conversation, messageWithId);
+        } else if (newMsg.receiverId) {
+          socketServer.emitToUser(String(newMsg.receiverId), 'notification:new', payload);
+        } else if (newMsg.receiverPhone) {
+          socketServer.emitToUser(String(newMsg.receiverPhone), 'notification:new', payload);
+        }
+      }
+    } catch (e) {
+      console.error('Error emitting seller reply socket event', e);
+    }
+
+    res.status(201).json({ success: true, data: { messageId: result.insertedId, conversationId: newMsg.conversationId || null } });
+  } catch (error) {
+    console.error("Error sending seller message:", error);
+    res.status(500).json({ success: false, error: "Failed to send message" });
   }
 };
 
@@ -802,7 +1004,7 @@ export const purchasePackage: RequestHandler = async (req, res) => {
   }
 };
 
-// Get seller dashboard stats
+// Get seller dashboard stats (include unread enquiries)
 export const getSellerStats: RequestHandler = async (req, res) => {
   try {
     const db = getDatabase();
@@ -835,46 +1037,42 @@ export const getSellerStats: RequestHandler = async (req, res) => {
         ],
       });
 
-    // Get messages stats
-    const unreadMessages = await db
+    // Unread chat messages
+    const unreadChat = await db
       .collection("property_inquiries")
       .countDocuments({
         $or: [{ sellerId: sellerObjId }, { sellerId: String(sellerId) }],
         isRead: false,
       });
 
+    // Unread form enquiries (status === "new" for seller's properties)
+    const sellerPropIdStrings = properties.map((p: any) =>
+      (p._id instanceof ObjectId ? p._id.toString() : String(p._id))
+    );
+    const unreadEnquiries = await db
+      .collection("enquiries")
+      .countDocuments({ propertyId: { $in: sellerPropIdStrings }, status: "new" });
+
+    const unreadMessages = unreadChat + unreadEnquiries;
+
     // Calculate stats
     const stats = {
       totalProperties: properties.length,
-      pendingApproval: properties.filter((p) => p.approvalStatus === "pending")
-        .length,
-      approved: properties.filter((p) => p.approvalStatus === "approved")
-        .length,
-      rejected: properties.filter((p) => p.approvalStatus === "rejected")
-        .length,
+      pendingApproval: properties.filter((p) => p.approvalStatus === "pending").length,
+      approved: properties.filter((p) => p.approvalStatus === "approved").length,
+      rejected: properties.filter((p) => p.approvalStatus === "rejected").length,
       totalViews: properties.reduce((sum, prop) => sum + (prop.views || 0), 0),
-      totalInquiries: properties.reduce(
-        (sum, prop) => sum + (prop.inquiries || 0),
-        0,
-      ),
+      totalInquiries: properties.reduce((sum, prop) => sum + (prop.inquiries || 0), 0),
       unreadNotifications,
       unreadMessages,
-      premiumListings: properties.filter(
-        (p) => (p as any).isPremium || (p as any).premium,
-      ).length,
+      premiumListings: properties.filter((p) => (p as any).isPremium || (p as any).premium).length,
       profileViews: Math.floor(Math.random() * 500) + 100,
     };
 
-    res.json({
-      success: true,
-      data: stats,
-    });
+    res.json({ success: true, data: stats });
   } catch (error) {
     console.error("Error fetching seller stats:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch stats",
-    });
+    res.status(500).json({ success: false, error: "Failed to fetch stats" });
   }
 };
 
