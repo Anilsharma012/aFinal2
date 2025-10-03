@@ -117,6 +117,47 @@ export default function EnhancedSellerDashboard() {
   const [packages, setPackages] = useState<PackageT[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
 
+  // Reply modal state
+  const [replyModalOpen, setReplyModalOpen] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<Message | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const openReplyModal = (m: Message) => {
+    setReplyTarget(m);
+    setReplyText(`Hi ${m.buyerName}, regarding ${m.propertyTitle}.`);
+    setReplyModalOpen(true);
+  };
+  const closeReplyModal = () => {
+    setReplyModalOpen(false);
+    setReplyTarget(null);
+    setReplyText("");
+  };
+
+  const sendReply = async () => {
+    try {
+      const token = await getAuthToken();
+      if (!token || !replyTarget) {
+        alert('Session expired or invalid target.');
+        return;
+      }
+      const body: any = { message: replyText };
+      if (replyTarget.source === 'enquiry') body.enquiryId = replyTarget._id;
+      if (replyTarget.buyerPhone) body.buyerPhone = replyTarget.buyerPhone;
+      if (replyTarget.propertyId) body.propertyId = replyTarget.propertyId;
+
+      const res = await api.post('/seller/messages', body, token);
+      if (res?.data?.success) {
+        alert('Reply sent');
+        closeReplyModal();
+        await fetchDashboardData();
+      } else {
+        alert('Failed to send reply');
+      }
+    } catch (e) {
+      console.error('sendReply:', e);
+      alert('Failed to send reply');
+    }
+  };
+
   // Filters for properties
   const [propSearch, setPropSearch] = useState("");
   const [propStatus, setPropStatus] = useState<"all" | "pending" | "approved" | "rejected">("all");
@@ -818,7 +859,7 @@ export default function EnhancedSellerDashboard() {
                             </div>
                           </div>
                           <div className="flex items-center space-x-2">
-                            {m.buyerPhone ? (
+                            {m.buyerPhone && (
                               <>
                                 <a href={`tel:${m.buyerPhone}`} className="inline-flex"><Button size="sm" variant="outline">Call</Button></a>
                                 <a
@@ -830,9 +871,9 @@ export default function EnhancedSellerDashboard() {
                                   <Button size="sm" variant="outline">WhatsApp</Button>
                                 </a>
                               </>
-                            ) : (
-                              <Button size="sm" variant="outline" disabled>Reply</Button>
                             )}
+
+                            <Button size="sm" variant="outline" onClick={() => openReplyModal(m)}>Reply</Button>
                           </div>
                         </div>
                       </div>
