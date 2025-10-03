@@ -874,7 +874,7 @@ export default function EnhancedSellerDashboard() {
                               </>
                             )}
 
-                            <Button size="sm" variant="outline" onClick={() => openReplyModal(m)}>Reply</Button>
+                            <Button size="sm" variant="outline" onClick={() => openReplyModal(m)} onMouseDown={() => openReplyModal(m)}>Reply</Button>
                           </div>
                         </div>
                       </div>
