@@ -147,11 +147,11 @@ export default function EnhancedSellerDashboard() {
 
       const res = await api.post('/seller/messages', body, token);
       if (res?.data?.success) {
-        alert('Reply sent');
+        toast.success('Reply sent successfully');
         closeReplyModal();
         await fetchDashboardData();
       } else {
-        alert('Failed to send reply');
+        toast.error('Failed to send reply');
       }
     } catch (e) {
       console.error('sendReply:', e);
