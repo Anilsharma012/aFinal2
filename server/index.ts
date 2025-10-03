@@ -1929,6 +1929,12 @@ export function createServer() {
     deleteSellerNotification,
   );
   app.get("/api/seller/messages", authenticateToken, getSellerMessages);
+  app.post(
+    "/api/seller/messages/reply",
+    authenticateToken,
+    requireSellerOrAgent,
+    replyToSellerMessage,
+  );
   app.get("/api/seller/packages", authenticateToken, getSellerPackages);
   app.get("/api/seller/payments", authenticateToken, getSellerPayments);
   app.put("/api/seller/profile", authenticateToken, updateSellerProfile);
