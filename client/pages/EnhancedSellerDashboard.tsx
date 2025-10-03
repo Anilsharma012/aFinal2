@@ -41,11 +41,13 @@ interface Message {
   _id: string;
   buyerName: string;
   buyerEmail: string;
+  buyerPhone?: string;
   message: string;
   propertyId: string;
   propertyTitle: string;
   timestamp: string;
   isRead: boolean;
+  source?: "chat" | "enquiry" | string;
 }
 
 interface PackageT {
@@ -806,7 +808,8 @@ export default function EnhancedSellerDashboard() {
                           <div className="flex-1">
                             <div className="flex items-center space-x-2 mb-2">
                               <h4 className="font-medium text-gray-900">{m.buyerName}</h4>
-                              <Badge variant="outline" className="text-xs">{m.buyerEmail}</Badge>
+                              {m.buyerEmail && <Badge variant="outline" className="text-xs">{m.buyerEmail}</Badge>}
+                              {m.buyerPhone && <Badge variant="outline" className="text-xs">{m.buyerPhone}</Badge>}
                             </div>
                             <p className="text-sm text-gray-600 mb-2">{m.message}</p>
                             <div className="flex items-center space-x-4 text-xs text-gray-400">
@@ -814,7 +817,23 @@ export default function EnhancedSellerDashboard() {
                               <span>{new Date(m.timestamp).toLocaleString()}</span>
                             </div>
                           </div>
-                          <Button size="sm" variant="outline">Reply</Button>
+                          <div className="flex items-center space-x-2">
+                            {m.buyerPhone ? (
+                              <>
+                                <a href={`tel:${m.buyerPhone}`} className="inline-flex"><Button size="sm" variant="outline">Call</Button></a>
+                                <a
+                                  href={`https://wa.me/${(m.buyerPhone || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${m.buyerName}, regarding ${m.propertyTitle}`)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex"
+                                >
+                                  <Button size="sm" variant="outline">WhatsApp</Button>
+                                </a>
+                              </>
+                            ) : (
+                              <Button size="sm" variant="outline" disabled>Reply</Button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
