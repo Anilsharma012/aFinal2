@@ -99,7 +99,14 @@ export const getSellerEnquiries: RequestHandler = async (req, res) => {
             let: { pid: { $toObjectId: "$propertyId" } },
             pipeline: [
               { $match: { $expr: { $eq: ["$_id", "$$pid"] } } },
-              { $project: { title: 1, price: 1, location: 1, images: { $arrayElemAt: ["$images", 0] } } },
+              {
+                $project: {
+                  title: 1,
+                  price: 1,
+                  location: 1,
+                  images: { $arrayElemAt: ["$images", 0] },
+                },
+              },
             ],
             as: "property",
           },
@@ -111,7 +118,9 @@ export const getSellerEnquiries: RequestHandler = async (req, res) => {
     res.json({ success: true, data: enquiries, total: enquiries.length });
   } catch (error: any) {
     console.error("Error fetching seller enquiries:", error);
-    res.status(500).json({ success: false, error: "Failed to fetch enquiries" });
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch enquiries" });
   }
 };
 
@@ -978,12 +987,10 @@ export const deleteSellerProperty: RequestHandler = async (req, res) => {
     });
 
     if (result.deletedCount === 0) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          error: "Property not found or not owned by user",
-        });
+      return res.status(404).json({
+        success: false,
+        error: "Property not found or not owned by user",
+      });
     }
 
     res.json({ success: true, message: "Property deleted" });
@@ -1033,12 +1040,10 @@ export const resubmitSellerProperty: RequestHandler = async (req, res) => {
     );
 
     if (!result.matchedCount) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          error: "Property not found or not owned by user",
-        });
+      return res.status(404).json({
+        success: false,
+        error: "Property not found or not owned by user",
+      });
     }
 
     res.json({ success: true, message: "Property resubmitted for review" });
