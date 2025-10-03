@@ -137,7 +137,7 @@ export default function EnhancedSellerDashboard() {
     try {
       const token = await getAuthToken();
       if (!token || !replyTarget) {
-        alert('Session expired or invalid target.');
+        toast.error('Session expired or invalid target. Please login again.');
         return;
       }
       const body: any = { message: replyText };
