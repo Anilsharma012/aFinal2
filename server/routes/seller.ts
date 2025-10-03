@@ -419,7 +419,6 @@ export const getSellerMessages: RequestHandler = async (req, res) => {
     const db = getDatabase();
     const sellerId = (req as any).userId;
 
-    // Get messages where seller is the recipient
     const sellerObjId = new ObjectId(String(sellerId));
     const messages = await db
       .collection("property_inquiries")
@@ -429,30 +428,35 @@ export const getSellerMessages: RequestHandler = async (req, res) => {
       .sort({ createdAt: -1 })
       .toArray();
 
-    // Enhance messages with buyer and property details
     const enhancedMessages = await Promise.all(
       messages.map(async (message) => {
-        // Get buyer details
-        const buyer = await db
-          .collection("users")
-          .findOne(
-            { _id: message.buyerId },
-            { projection: { name: 1, email: 1, phone: 1 } },
-          );
+        const buyer = message.buyerId
+          ? await db
+              .collection("users")
+              .findOne(
+                { _id: message.buyerId },
+                { projection: { name: 1, email: 1, phone: 1 } },
+              )
+          : null;
 
-        // Get property details
-        const property = await db
-          .collection("properties")
-          .findOne(
-            { _id: message.propertyId },
-            { projection: { title: 1, price: 1 } },
-          );
+        const property = message.propertyId
+          ? await db
+              .collection("properties")
+              .findOne(
+                { _id: message.propertyId },
+                { projection: { title: 1, price: 1 } },
+              )
+          : null;
+
+        const buyerName = buyer?.name || message.name || message.buyerName || "Unknown Buyer";
+        const buyerEmail = buyer?.email || message.email || "";
+        const buyerPhone = buyer?.phone || message.phone || "";
 
         return {
           ...message,
-          buyerName: buyer?.name || "Unknown Buyer",
-          buyerEmail: buyer?.email || "",
-          buyerPhone: buyer?.phone || "",
+          buyerName,
+          buyerEmail,
+          buyerPhone,
           propertyTitle: property?.title || "Unknown Property",
           propertyPrice: property?.price || 0,
           timestamp: message.createdAt,
@@ -473,6 +477,44 @@ export const getSellerMessages: RequestHandler = async (req, res) => {
       success: false,
       error: "Failed to fetch messages",
     });
+  }
+};
+
+// Seller replies to a property inquiry (simple threaded notes on the inquiry)
+export const replyToSellerMessage: RequestHandler = async (req, res) => {
+  try {
+    const db = getDatabase();
+    const sellerId = (req as any).userId;
+    const { inquiryId, reply } = req.body as { inquiryId: string; reply: string };
+
+    if (!inquiryId || !ObjectId.isValid(inquiryId) || !reply || !reply.trim()) {
+      return res.status(400).json({ success: false, error: "inquiryId and reply are required" });
+    }
+
+    const result = await db.collection("property_inquiries").updateOne(
+      { _id: new ObjectId(inquiryId), $or: [{ sellerId: new ObjectId(String(sellerId)) }, { sellerId: String(sellerId) }] },
+      {
+        $push: {
+          replies: {
+            _id: new ObjectId(),
+            sender: "seller",
+            senderId: new ObjectId(String(sellerId)),
+            message: reply.trim(),
+            createdAt: new Date(),
+          },
+        },
+        $set: { updatedAt: new Date(), isRead: true },
+      },
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ success: false, error: "Inquiry not found" });
+    }
+
+    return res.json({ success: true, message: "Reply added" });
+  } catch (error) {
+    console.error("replyToSellerMessage error:", error);
+    return res.status(500).json({ success: false, error: "Failed to add reply" });
   }
 };
 
