@@ -421,6 +421,7 @@ import {
   getSellerStats,
   deleteSellerProperty,
   resubmitSellerProperty,
+  replyToSellerMessage,
 } from "./routes/seller";
 
 // Chatbot routes
