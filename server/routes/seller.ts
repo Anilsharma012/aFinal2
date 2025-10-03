@@ -594,7 +594,44 @@ export const sendSellerMessage: RequestHandler = async (req, res) => {
     if (propertyId) newMsg.propertyId = propertyId;
     if (enquiryId) newMsg.enquiryId = enquiryId;
 
+    // If we have propertyId and receiverId, try to find or create a conversation so buyer UI (conversations) shows the message
+    let conversation: any = null;
+    if (newMsg.propertyId && newMsg.receiverId) {
+      try {
+        conversation = await db.collection('conversations').findOne({ property: new ObjectId(String(newMsg.propertyId)), buyer: newMsg.receiverId, seller: String(newMsg.senderId) });
+        if (!conversation) {
+          const convDoc: any = {
+            property: new ObjectId(String(newMsg.propertyId)),
+            buyer: newMsg.receiverId,
+            seller: String(newMsg.senderId),
+            participants: [newMsg.receiverId, String(newMsg.senderId)],
+            createdAt: new Date(),
+            lastMessageAt: new Date(),
+            updatedAt: new Date(),
+          };
+          const convRes = await db.collection('conversations').insertOne(convDoc);
+          conversation = { _id: convRes.insertedId, ...convDoc };
+        }
+      } catch (e) {
+        console.warn('Could not create/find conversation for reply', e);
+      }
+    }
+
+    // Attach conversationId to message if available
+    if (conversation && conversation._id) {
+      newMsg.conversationId = conversation._id.toString();
+    }
+
     const result = await db.collection("messages").insertOne(newMsg);
+
+    // Update conversation lastMessageAt
+    if (conversation && conversation._id) {
+      try {
+        await db.collection('conversations').updateOne({ _id: new ObjectId(conversation._id) }, { $set: { lastMessageAt: new Date(), updatedAt: new Date() } });
+      } catch (e) {
+        // continue
+      }
+    }
 
     // If it's an enquiry, mark as contacted
     if (enquiryId) {
@@ -617,24 +654,16 @@ export const sendSellerMessage: RequestHandler = async (req, res) => {
           propertyId: newMsg.propertyId,
           enquiryId: newMsg.enquiryId,
           createdAt: newMsg.createdAt,
+          conversationId: newMsg.conversationId,
           source: newMsg.source || 'seller_reply'
         };
 
-        // Find conversation if exists
-        let conversation: any = null;
-        if (newMsg.propertyId && newMsg.receiverId) {
-          conversation = await db.collection('conversations').findOne({ property: new ObjectId(String(newMsg.propertyId)), buyer: newMsg.receiverId, seller: String(newMsg.senderId) });
-        }
-
         if (conversation) {
-          // Use emitNewMessage to notify conversation participants
           const messageWithId = { ...payload, _id: result.insertedId, text: payload.message, sender: payload.senderId };
           socketServer.emitNewMessage(conversation, messageWithId);
         } else if (newMsg.receiverId) {
-          // Emit generic notification to the buyer's personal room
           socketServer.emitToUser(String(newMsg.receiverId), 'notification:new', payload);
         } else if (newMsg.receiverPhone) {
-          // If only phone available, emit to a room for that phone if any
           socketServer.emitToUser(String(newMsg.receiverPhone), 'notification:new', payload);
         }
       }
@@ -642,7 +671,7 @@ export const sendSellerMessage: RequestHandler = async (req, res) => {
       console.error('Error emitting seller reply socket event', e);
     }
 
-    res.status(201).json({ success: true, data: { messageId: result.insertedId } });
+    res.status(201).json({ success: true, data: { messageId: result.insertedId, conversationId: newMsg.conversationId || null } });
   } catch (error) {
     console.error("Error sending seller message:", error);
     res.status(500).json({ success: false, error: "Failed to send message" });
