@@ -122,7 +122,7 @@ const HeroImageSlider: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="relative w-full h-[55vh] min-h-[280px] sm:h-[400px] md:h-[450px] lg:h-[500px] overflow-hidden bg-gray-200 animate-pulse">
+      <div className="relative w-full h-[60vh] min-h-[340px] sm:h-[460px] md:h-[520px] lg:h-[560px] overflow-hidden bg-gray-200 animate-pulse">
         <div className="absolute inset-0 bg-gradient-to-r from-gray-300 to-gray-400"></div>
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center text-gray-500">
