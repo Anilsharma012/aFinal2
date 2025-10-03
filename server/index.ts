@@ -421,6 +421,7 @@ import {
   getSellerStats,
   deleteSellerProperty,
   resubmitSellerProperty,
+  getSellerEnquiries,
 } from "./routes/seller";
 
 // Chatbot routes
@@ -1929,7 +1930,7 @@ export function createServer() {
     deleteSellerNotification,
   );
   app.get("/api/seller/messages", authenticateToken, getSellerMessages);
-  app.get("/api/seller/enquiries", authenticateToken, (await import("./routes/seller")).getSellerEnquiries);
+  app.get("/api/seller/enquiries", authenticateToken, getSellerEnquiries);
   app.get("/api/seller/packages", authenticateToken, getSellerPackages);
   app.get("/api/seller/payments", authenticateToken, getSellerPayments);
   app.put("/api/seller/profile", authenticateToken, updateSellerProfile);
