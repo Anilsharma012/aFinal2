@@ -122,7 +122,7 @@ const HeroImageSlider: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="relative w-full h-[60vh] min-h-[340px] sm:h-[460px] md:h-[520px] lg:h-[560px] overflow-hidden bg-gray-200 animate-pulse">
+      <div className="relative w-full h-[60vh] min-h-[420px] md:h-[66vh] lg:h-[72vh] overflow-hidden bg-gray-200 animate-pulse">
         <div className="absolute inset-0 bg-gradient-to-r from-gray-300 to-gray-400"></div>
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center text-gray-500">
@@ -141,7 +141,8 @@ const HeroImageSlider: React.FC = () => {
 
   return (
   
-    <div className="relative w-full h-[60vh] min-h-[340px] sm:h-[460px] md:h-[520px] lg:h-[560px] overflow-hidden bg-gray-900">
+    <div className="relative w-full h-[60vh] min-h-[420px] md:h-[66vh] lg:h-[72vh] overflow-hidden bg-transparent">
+      <div className="absolute inset-0">
       <Carousel
         opts={{ align: "start", loop: true }}
         setApi={setApi}
@@ -149,7 +150,7 @@ const HeroImageSlider: React.FC = () => {
       >
         <CarouselContent className="h-full">
           {banners.map((banner, index) => (
-            <CarouselItem key={banner._id || index} className="h-full">
+            <CarouselItem key={banner._id || index} className="relative h-full p-0">
               <div
                 className={`relative w-full h-full ${banner.link ? "cursor-pointer" : ""}`}
                 onClick={() => handleBannerClick(banner)}
@@ -157,7 +158,7 @@ const HeroImageSlider: React.FC = () => {
                 <img
                   src={banner.imageUrl}
                   alt={banner.title}
-                  className="block w-full h-full object-cover"
+                  className="block absolute inset-0 w-full h-full object-cover object-center"
                   loading={index === 0 ? "eager" : "lazy"}
                   onError={(e) => {
                     (e.target as HTMLImageElement).src =
@@ -202,6 +203,7 @@ const HeroImageSlider: React.FC = () => {
           </>
         )}
       </Carousel>
+      </div>
 
       {banners.length > 1 && (
         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-2 z-50">
