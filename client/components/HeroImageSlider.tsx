@@ -31,18 +31,22 @@ const HeroImageSlider: React.FC = () => {
           console.warn("⏰ Banner fetch timeout after 8 seconds");
         }, 8000);
 
-        const response = await fetch("/api/banners?active=true", {
-          signal: controller.signal,
-          headers: { "Content-Type": "application/json" },
-        });
+        // Prefer the global api helper which includes XHR fallback and better diagnostics
+        let data: any = null;
+        try {
+          const apiModule = await import("../lib/global-api");
+          const globalApi = apiModule.api as any;
 
-        clearTimeout(timeoutId);
+          const result = await globalApi("banners?active=true", { method: "GET", timeout: 8000 });
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          if (!result || !result.ok) {
+            throw new Error(result?.data?.error || `API error status=${result?.status}`);
+          }
+
+          data = result.data;
+        } finally {
+          clearTimeout(timeoutId);
         }
-
-        const data = await response.json();
 
         if (data.success && data.data && Array.isArray(data.data)) {
           const sortedBanners = data.data.sort(
