@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { BannerAd } from "@shared/types";
 import {
   Carousel,
@@ -31,18 +32,22 @@ const HeroImageSlider: React.FC = () => {
           console.warn("⏰ Banner fetch timeout after 8 seconds");
         }, 8000);
 
-        const response = await fetch("/api/banners?active=true", {
-          signal: controller.signal,
-          headers: { "Content-Type": "application/json" },
-        });
+        // Prefer the global api helper which includes XHR fallback and better diagnostics
+        let data: any = null;
+        try {
+          const apiModule = await import("../lib/global-api");
+          const globalApi = apiModule.api as any;
 
-        clearTimeout(timeoutId);
+          const result = await globalApi("banners?active=true", { method: "GET", timeout: 8000 });
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          if (!result || !result.ok) {
+            throw new Error(result?.data?.error || `API error status=${result?.status}`);
+          }
+
+          data = result.data;
+        } finally {
+          clearTimeout(timeoutId);
         }
-
-        const data = await response.json();
 
         if (data.success && data.data && Array.isArray(data.data)) {
           const sortedBanners = data.data.sort(
@@ -122,7 +127,7 @@ const HeroImageSlider: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="relative w-full h-[55vh] min-h-[280px] sm:h-[400px] md:h-[450px] lg:h-[500px] overflow-hidden bg-gray-200 animate-pulse">
+      <div className="relative w-full h-[60vh] min-h-[420px] md:h-[66vh] lg:h-[72vh] overflow-hidden bg-gray-200 animate-pulse">
         <div className="absolute inset-0 bg-gradient-to-r from-gray-300 to-gray-400"></div>
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center text-gray-500">
@@ -141,7 +146,8 @@ const HeroImageSlider: React.FC = () => {
 
   return (
   
-    <div className="relative w-full h-[55vh] min-h-[280px] sm:h-[400px] md:h-[450px] lg:h-[500px] overflow-hidden bg-gray-900">
+    <div className="relative w-full h-[60vh] min-h-[420px] md:h-[66vh] lg:h-[72vh] overflow-hidden bg-transparent">
+      <div className="absolute inset-0">
       <Carousel
         opts={{ align: "start", loop: true }}
         setApi={setApi}
@@ -149,7 +155,7 @@ const HeroImageSlider: React.FC = () => {
       >
         <CarouselContent className="h-full">
           {banners.map((banner, index) => (
-            <CarouselItem key={banner._id || index} className="h-full">
+            <CarouselItem key={banner._id || index} className="relative h-full p-0">
               <div
                 className={`relative w-full h-full ${banner.link ? "cursor-pointer" : ""}`}
                 onClick={() => handleBannerClick(banner)}
@@ -157,7 +163,7 @@ const HeroImageSlider: React.FC = () => {
                 <img
                   src={banner.imageUrl}
                   alt={banner.title}
-                  className="block w-full h-full object-cover"
+                  className="block absolute inset-0 w-full h-full object-cover object-center"
                   loading={index === 0 ? "eager" : "lazy"}
                   onError={(e) => {
                     (e.target as HTMLImageElement).src =
@@ -202,6 +208,7 @@ const HeroImageSlider: React.FC = () => {
           </>
         )}
       </Carousel>
+      </div>
 
       {banners.length > 1 && (
         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-2 z-50">

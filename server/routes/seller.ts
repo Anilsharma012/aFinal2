@@ -4,6 +4,22 @@ import { ApiResponse } from "@shared/types";
 import { ObjectId } from "mongodb";
 import bcrypt from "bcrypt";
 
+export interface SellerEnquiry {
+  _id: string;
+  propertyId: string;
+  name: string;
+  phone: string;
+  message: string;
+  status: "new" | "contacted" | "closed";
+  createdAt: Date;
+  property?: {
+    title?: string;
+    price?: number;
+    location?: { address?: string };
+    images?: any;
+  };
+}
+
 // Get seller's properties
 export const getSellerProperties: RequestHandler = async (req, res) => {
   try {
@@ -39,6 +55,72 @@ export const getSellerProperties: RequestHandler = async (req, res) => {
       success: false,
       error: "Failed to fetch properties",
     });
+  }
+};
+
+// Get seller enquiries mapped to seller-owned properties
+export const getSellerEnquiries: RequestHandler = async (req, res) => {
+  try {
+    const db = getDatabase();
+    const sellerId = (req as any).userId;
+    const sellerObjId = new ObjectId(String(sellerId));
+
+    // Fetch seller property IDs
+    const properties = await db
+      .collection("properties")
+      .find({
+        $or: [
+          { ownerId: String(sellerId) },
+          { ownerId: sellerObjId },
+          { userId: sellerObjId },
+          { userId: String(sellerId) },
+          { sellerId: sellerObjId },
+          { sellerId: String(sellerId) },
+        ],
+      })
+      .project({ _id: 1 })
+      .toArray();
+
+    const propertyIds = properties.map((p: any) => p._id.toString());
+
+    if (propertyIds.length === 0) {
+      return res.json({ success: true, data: [], total: 0 });
+    }
+
+    // Get enquiries for these properties with property info
+    const enquiries = await db
+      .collection("enquiries")
+      .aggregate([
+        { $match: { propertyId: { $in: propertyIds } } },
+        { $sort: { createdAt: -1 } },
+        {
+          $lookup: {
+            from: "properties",
+            let: { pid: { $toObjectId: "$propertyId" } },
+            pipeline: [
+              { $match: { $expr: { $eq: ["$_id", "$$pid"] } } },
+              {
+                $project: {
+                  title: 1,
+                  price: 1,
+                  location: 1,
+                  images: { $arrayElemAt: ["$images", 0] },
+                },
+              },
+            ],
+            as: "property",
+          },
+        },
+        { $unwind: { path: "$property", preserveNullAndEmptyArrays: true } },
+      ])
+      .toArray();
+
+    res.json({ success: true, data: enquiries, total: enquiries.length });
+  } catch (error: any) {
+    console.error("Error fetching seller enquiries:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch enquiries" });
   }
 };
 
@@ -905,12 +987,10 @@ export const deleteSellerProperty: RequestHandler = async (req, res) => {
     });
 
     if (result.deletedCount === 0) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          error: "Property not found or not owned by user",
-        });
+      return res.status(404).json({
+        success: false,
+        error: "Property not found or not owned by user",
+      });
     }
 
     res.json({ success: true, message: "Property deleted" });
@@ -960,12 +1040,10 @@ export const resubmitSellerProperty: RequestHandler = async (req, res) => {
     );
 
     if (!result.matchedCount) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          error: "Property not found or not owned by user",
-        });
+      return res.status(404).json({
+        success: false,
+        error: "Property not found or not owned by user",
+      });
     }
 
     res.json({ success: true, message: "Property resubmitted for review" });

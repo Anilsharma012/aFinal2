@@ -128,8 +128,8 @@ function api(p: string, o: any = {}) {
         body: bodyContent,
         signal: controller.signal,
         keepalive: !!o.keepalive,
-        // Prefer include to match server cookie-based auth when available
-        credentials: o.credentials || "include",
+        // Use same-origin by default to avoid cross-site credential preflight when not needed
+        credentials: o.credentials || "same-origin",
         // Omit explicit mode to allow browser default behavior for same-origin requests
         cache: o.cache || "no-store",
         referrerPolicy: "no-referrer",
