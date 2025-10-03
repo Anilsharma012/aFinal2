@@ -413,15 +413,16 @@ export const deleteSellerNotification: RequestHandler = async (req, res) => {
   }
 };
 
-// Get seller messages from buyers
+// Get seller messages from buyers (includes chat inquiries and form enquiries)
 export const getSellerMessages: RequestHandler = async (req, res) => {
   try {
     const db = getDatabase();
     const sellerId = (req as any).userId;
 
-    // Get messages where seller is the recipient
     const sellerObjId = new ObjectId(String(sellerId));
-    const messages = await db
+
+    // 1) Messages from chat-based inquiries (property_inquiries)
+    const chatMsgs = await db
       .collection("property_inquiries")
       .find({
         $or: [{ sellerId: sellerObjId }, { sellerId: String(sellerId) }],
@@ -429,41 +430,95 @@ export const getSellerMessages: RequestHandler = async (req, res) => {
       .sort({ createdAt: -1 })
       .toArray();
 
-    // Enhance messages with buyer and property details
-    const enhancedMessages = await Promise.all(
-      messages.map(async (message) => {
-        // Get buyer details
-        const buyer = await db
-          .collection("users")
-          .findOne(
-            { _id: message.buyerId },
-            { projection: { name: 1, email: 1, phone: 1 } },
-          );
+    const chatEnhanced = await Promise.all(
+      chatMsgs.map(async (message) => {
+        const buyer = message.buyerId
+          ? await db
+              .collection("users")
+              .findOne(
+                { _id: message.buyerId },
+                { projection: { name: 1, email: 1, phone: 1 } },
+              )
+          : null;
 
-        // Get property details
-        const property = await db
-          .collection("properties")
-          .findOne(
-            { _id: message.propertyId },
-            { projection: { title: 1, price: 1 } },
-          );
+        const property = message.propertyId
+          ? await db
+              .collection("properties")
+              .findOne(
+                { _id: message.propertyId },
+                { projection: { title: 1, price: 1 } },
+              )
+          : null;
 
         return {
-          ...message,
+          _id: message._id,
           buyerName: buyer?.name || "Unknown Buyer",
           buyerEmail: buyer?.email || "",
           buyerPhone: buyer?.phone || "",
+          message: message.message,
+          propertyId: message.propertyId,
           propertyTitle: property?.title || "Unknown Property",
           propertyPrice: property?.price || 0,
           timestamp: message.createdAt,
-          isRead: message.isRead || false,
+          isRead: !!message.isRead,
+          source: "chat",
         };
       }),
     );
 
+    // 2) Form-based enquiries from /api/enquiries (map to seller's properties)
+    const sellerProps = await db
+      .collection("properties")
+      .find({
+        $or: [
+          { ownerId: String(sellerId) },
+          { ownerId: sellerObjId },
+          { sellerId: String(sellerId) },
+          { sellerId: sellerObjId },
+          { userId: String(sellerId) },
+          { userId: sellerObjId },
+        ],
+      }, { projection: { _id: 1, title: 1, price: 1 } })
+      .toArray();
+
+    const propMap = new Map<string, { title: string; price: number }>();
+    const propIdStrings = sellerProps.map((p: any) => {
+      const idStr = (p._id instanceof ObjectId ? p._id.toString() : String(p._id));
+      propMap.set(idStr, { title: p.title || "", price: p.price || 0 });
+      return idStr;
+    });
+
+    const enquiries = await db
+      .collection("enquiries")
+      .find({ propertyId: { $in: propIdStrings } })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    const enquiryMapped = enquiries.map((e: any) => {
+      const prop = propMap.get(String(e.propertyId)) || { title: "", price: 0 };
+      return {
+        _id: e._id,
+        buyerName: e.name,
+        buyerEmail: "",
+        buyerPhone: e.phone,
+        message: e.message,
+        propertyId: e.propertyId ? new ObjectId(e.propertyId) : undefined,
+        propertyTitle: prop.title || "",
+        propertyPrice: prop.price || 0,
+        timestamp: e.createdAt || new Date(e.timestamp),
+        isRead: e.status !== "new",
+        source: "enquiry",
+      };
+    });
+
+    // 3) Merge and sort by time desc
+    const combined = [...chatEnhanced, ...enquiryMapped].sort(
+      (a, b) => new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime(),
+    );
+
     const response: ApiResponse<any[]> = {
       success: true,
-      data: enhancedMessages,
+      data: combined,
     };
 
     res.json(response);
@@ -802,7 +857,7 @@ export const purchasePackage: RequestHandler = async (req, res) => {
   }
 };
 
-// Get seller dashboard stats
+// Get seller dashboard stats (include unread enquiries)
 export const getSellerStats: RequestHandler = async (req, res) => {
   try {
     const db = getDatabase();
@@ -835,46 +890,42 @@ export const getSellerStats: RequestHandler = async (req, res) => {
         ],
       });
 
-    // Get messages stats
-    const unreadMessages = await db
+    // Unread chat messages
+    const unreadChat = await db
       .collection("property_inquiries")
       .countDocuments({
         $or: [{ sellerId: sellerObjId }, { sellerId: String(sellerId) }],
         isRead: false,
       });
 
+    // Unread form enquiries (status === "new" for seller's properties)
+    const sellerPropIdStrings = properties.map((p: any) =>
+      (p._id instanceof ObjectId ? p._id.toString() : String(p._id))
+    );
+    const unreadEnquiries = await db
+      .collection("enquiries")
+      .countDocuments({ propertyId: { $in: sellerPropIdStrings }, status: "new" });
+
+    const unreadMessages = unreadChat + unreadEnquiries;
+
     // Calculate stats
     const stats = {
       totalProperties: properties.length,
-      pendingApproval: properties.filter((p) => p.approvalStatus === "pending")
-        .length,
-      approved: properties.filter((p) => p.approvalStatus === "approved")
-        .length,
-      rejected: properties.filter((p) => p.approvalStatus === "rejected")
-        .length,
+      pendingApproval: properties.filter((p) => p.approvalStatus === "pending").length,
+      approved: properties.filter((p) => p.approvalStatus === "approved").length,
+      rejected: properties.filter((p) => p.approvalStatus === "rejected").length,
       totalViews: properties.reduce((sum, prop) => sum + (prop.views || 0), 0),
-      totalInquiries: properties.reduce(
-        (sum, prop) => sum + (prop.inquiries || 0),
-        0,
-      ),
+      totalInquiries: properties.reduce((sum, prop) => sum + (prop.inquiries || 0), 0),
       unreadNotifications,
       unreadMessages,
-      premiumListings: properties.filter(
-        (p) => (p as any).isPremium || (p as any).premium,
-      ).length,
+      premiumListings: properties.filter((p) => (p as any).isPremium || (p as any).premium).length,
       profileViews: Math.floor(Math.random() * 500) + 100,
     };
 
-    res.json({
-      success: true,
-      data: stats,
-    });
+    res.json({ success: true, data: stats });
   } catch (error) {
     console.error("Error fetching seller stats:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch stats",
-    });
+    res.status(500).json({ success: false, error: "Failed to fetch stats" });
   }
 };
 
