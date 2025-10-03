@@ -413,6 +413,7 @@ import {
   markNotificationAsRead,
   deleteSellerNotification,
   getSellerMessages,
+  sendSellerMessage,
   getSellerPackages,
   getSellerPayments,
   updateSellerProfile,
