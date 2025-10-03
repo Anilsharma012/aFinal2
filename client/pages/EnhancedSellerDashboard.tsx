@@ -1096,6 +1096,28 @@ export default function EnhancedSellerDashboard() {
         </Tabs>
       </div>
 
+      {/* Reply Modal */}
+      <Dialog open={replyModalOpen} onOpenChange={(o) => { if(!o) closeReplyModal(); else setReplyModalOpen(Boolean(o)); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Reply to {replyTarget?.buyerName}</DialogTitle>
+          </DialogHeader>
+          <div className="p-2">
+            <p className="text-sm text-gray-500 mb-2">Property: {replyTarget?.propertyTitle}</p>
+            <textarea
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              rows={6}
+              className="w-full border border-gray-300 rounded p-2"
+            />
+            <div className="flex justify-end mt-3 space-x-2">
+              <Button variant="outline" onClick={closeReplyModal}>Cancel</Button>
+              <Button onClick={sendReply} className="bg-[#C70000] text-white">Send Reply</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <BottomNavigation />
     </div>
   );
